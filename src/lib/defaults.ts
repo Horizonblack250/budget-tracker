@@ -8,7 +8,7 @@ export function defaultPlan(): Plan {
     buckets: [
       { id: 'rent', kind: 'fixed', name: 'Rent', amount: 15900, hint: 'with electricity, AC etc.' },
       { id: 'sip', kind: 'invest', name: 'Long-term SIP', amount: 5000, locked: true },
-      { id: 'emergency', kind: 'fund', name: 'Emergency fund', amount: 5000, target: 50000, locked: true },
+      { id: 'emergency', kind: 'fund', name: 'Emergency fund', amount: 5000, target: 50000 },
       { id: 'travel', kind: 'fund', name: 'Travel fund', amount: 5000, hint: 'trips home, travel' },
       { id: 'office', kind: 'allowance', name: 'Office lunch', amount: 2250, hint: '3 days a week, ~₹150 + buffer' },
       { id: 'phone', kind: 'allowance', name: 'Phone & subscriptions', amount: 1000 },

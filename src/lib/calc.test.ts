@@ -122,11 +122,11 @@ describe('plan changes apply from a month onward', () => {
 
 describe('locked buckets', () => {
   it('are never offered to cover a shortfall', () => {
-    const r = computeMonth(defaultData(), '2026-12');
-    const ids = coverOptions(r, 'office', 50).map((s) => s.id);
+    const d = changePlan(defaultData(), '2026-12', { type: 'update', id: 'travel', patch: { locked: true } });
+    const ids = coverOptions(computeMonth(d, '2026-12'), 'office', 50).map((s) => s.id);
     expect(ids).toContain(FREE);
-    expect(ids).toContain('travel');
-    expect(ids).not.toContain('emergency'); // locked
+    expect(ids).toContain('emergency'); // unlocked by default
+    expect(ids).not.toContain('travel'); // locked
     expect(ids).not.toContain('sip'); // investments are never sources
     expect(ids).not.toContain('office');
   });
