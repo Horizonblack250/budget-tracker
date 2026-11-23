@@ -66,7 +66,14 @@ function Budget({ userId, email }: { userId?: string; email?: string }) {
     return { data, view: now < data.start ? data.start : now, past: [], toast: null };
   });
   const [loaded, setLoaded] = useState(false);
-  const [sync, setSync] = useState<SyncStatus | null>(null);
+  const [sync, setSyncState] = useState<SyncStatus | null>(null);
+  const [syncDetail, setSyncDetail] = useState('');
+  const [showSync, setShowSync] = useState(false);
+  const setSync = useCallback((s: SyncStatus, detail?: string) => {
+    setSyncState(s);
+    if (s === 'synced') setSyncDetail('');
+    else if (detail) setSyncDetail(detail);
+  }, []);
   const [tab, setTab] = useState<Tab>('home');
   const [sheet, setSheet] = useState<SheetState>(null);
   const engine = useRef<SyncEngine | null>(null);
@@ -157,7 +164,13 @@ function Budget({ userId, email }: { userId?: string; email?: string }) {
               <span className="logo" aria-hidden>₹</span>
               <span>
                 Monthly budget
-                <span className={`status ${sync === 'error' ? 'neg' : ''}`}>{statusText}</span>
+                {sync ? (
+                  <button type="button" className={`status statusbtn ${sync === 'error' ? 'neg' : ''}`} onClick={() => setShowSync((x) => !x)} aria-expanded={showSync}>
+                    {statusText} ▾
+                  </button>
+                ) : (
+                  <span className="status">{statusText}</span>
+                )}
               </span>
             </div>
             <button
@@ -186,6 +199,28 @@ function Budget({ userId, email }: { userId?: string; email?: string }) {
               )}
             </div>
           </header>
+          {showSync && sync && (
+            <div className={`card syncpanel ${sync === 'error' ? 'syncpanel-err' : ''}`} role="status">
+              <p>
+                <strong>{STATUS[sync]}</strong>
+                {email && <span className="small mute block">Signed in as {email}</span>}
+              </p>
+              {syncDetail && (
+                <p className="small">
+                  Details: <code>{syncDetail}</code>
+                </p>
+              )}
+              <p className="small mute">Your changes are always saved on this device first, then sent online. Changes from your other devices arrive when you come back to the app, or within about 15 seconds.</p>
+              <div className="btnrow">
+                <button type="button" className="primary" onClick={() => void engine.current?.syncNow()}>
+                  Sync now
+                </button>
+                <button type="button" onClick={() => setShowSync(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
 
           <nav className="tabs" aria-label="Sections">
             {TABS.map((t) => (

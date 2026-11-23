@@ -325,3 +325,10 @@ button.small { padding: 4px 10px; font-size: 13px; }
 .login h2 { font-size: 22px; }
 .login .primary { margin-top: 8px; }
 .center-link { justify-self: center; margin-top: 12px; }
+
+/* ---------- sync status ---------- */
+.statusbtn { border: 0; background: none; padding: 0; text-align: left; cursor: pointer; }
+.statusbtn:hover { color: var(--ink); }
+.syncpanel { margin: 0 0 12px; }
+.syncpanel-err { border-color: var(--over); }
+.syncpanel code { font-size: 12px; word-break: break-word; }

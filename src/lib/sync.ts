@@ -5,67 +5,98 @@ import type { Data } from './types';
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error';
 
 const PENDING_KEY = 'budget-tracker-pending';
+const STAMP_KEY = 'budget-tracker-stamp';
 const PUSH_DELAY = 800;
-const PULL_EVERY = 60_000;
+const PULL_EVERY = 15_000;
 
-function pending(): boolean {
+function read(key: string): string | null {
   try {
-    return localStorage.getItem(PENDING_KEY) === '1';
+    return localStorage.getItem(key);
   } catch {
-    return false;
+    return null;
   }
 }
-function setPending(on: boolean) {
+function write(key: string, value: string | null) {
   try {
-    if (on) localStorage.setItem(PENDING_KEY, '1');
-    else localStorage.removeItem(PENDING_KEY);
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
   } catch {
-    /* storage unavailable: we just retry from memory */
+    /* storage unavailable: we just keep going from memory */
   }
+}
+const pending = () => read(PENDING_KEY) === '1';
+const setPending = (on: boolean) => write(PENDING_KEY, on ? '1' : null);
+
+type Remote = { data: Data; stamp: string };
+
+function describe(e: unknown): string {
+  if (e && typeof e === 'object') {
+    const x = e as { message?: string; code?: string; details?: string; hint?: string };
+    return [x.message, x.code && `(code ${x.code})`, x.hint].filter(Boolean).join(' ');
+  }
+  return String(e);
 }
 
 /**
  * Keeps a local copy (so the app opens and works offline) and mirrors every
- * change to one row in the `budgets` table. The newest copy wins, by `data.t`.
+ * change to one row in the `budgets` table.
+ *
+ * To tell whether another device saved something, we compare the row's
+ * `updated_at` with the one we last saw. That marker comes from the database
+ * row itself, so it doesn't matter if the phone's and PC's clocks disagree.
  */
 export class SyncEngine {
   private latest: Data | null = null;
+  /** `updated_at` of the cloud row as of our last read or write. */
+  private stamp: string | null = read(STAMP_KEY);
   private timer: ReturnType<typeof setTimeout> | undefined;
-  private pushing = false;
+  private busy = false;
   private disposed = false;
   private readonly cleanups: (() => void)[] = [];
   private readonly db: SupabaseClient;
   private readonly userId: string;
-  private readonly onStatus: (s: SyncStatus) => void;
+  private readonly onStatus: (s: SyncStatus, detail?: string) => void;
   private readonly onRemote: (d: Data) => void;
 
-  constructor(db: SupabaseClient, userId: string, onStatus: (s: SyncStatus) => void, onRemote: (d: Data) => void) {
+  constructor(db: SupabaseClient, userId: string, onStatus: (s: SyncStatus, detail?: string) => void, onRemote: (d: Data) => void) {
     this.db = db;
     this.userId = userId;
     this.onStatus = onStatus;
     this.onRemote = onRemote;
-    const online = () => this.flush();
+    const wake = () => void this.syncNow();
+    const visible = () => document.visibilityState === 'visible' && wake();
     const offline = () => this.onStatus('offline');
-    const visible = () => document.visibilityState === 'visible' && this.pull();
-    window.addEventListener('online', online);
+    window.addEventListener('online', wake);
+    window.addEventListener('focus', wake);
     window.addEventListener('offline', offline);
     document.addEventListener('visibilitychange', visible);
-    const iv = setInterval(() => this.pull(), PULL_EVERY);
+    const iv = setInterval(() => document.visibilityState === 'visible' && void this.pull(), PULL_EVERY);
     this.cleanups.push(
-      () => window.removeEventListener('online', online),
+      () => window.removeEventListener('online', wake),
+      () => window.removeEventListener('focus', wake),
       () => window.removeEventListener('offline', offline),
       () => document.removeEventListener('visibilitychange', visible),
       () => clearInterval(iv),
     );
   }
 
-  private async fetchRemote(): Promise<Data | null | 'error'> {
-    const { data, error } = await this.db.from('budgets').select('data').eq('user_id', this.userId).maybeSingle();
-    if (error) {
-      console.error('[sync] fetch failed', error);
-      return 'error';
+  private setStamp(s: string | null) {
+    this.stamp = s;
+    write(STAMP_KEY, s);
+  }
+
+  private async fetchRemote(): Promise<Remote | null | { error: string }> {
+    try {
+      const { data, error } = await this.db.from('budgets').select('data, updated_at').eq('user_id', this.userId).maybeSingle();
+      if (error) {
+        console.error('[sync] fetch failed', error);
+        return { error: describe(error) };
+      }
+      return data ? { data: normalize(data.data), stamp: String(data.updated_at) } : null;
+    } catch (e) {
+      console.error('[sync] fetch failed', e);
+      return { error: describe(e) };
     }
-    return data ? normalize(data.data) : null;
   }
 
   /** Load the newest copy. Uploads the local copy the first time (moving this device's data to the cloud). */
@@ -78,20 +109,26 @@ export class SyncEngine {
     }
     this.onStatus('syncing');
     const remote = await this.fetchRemote();
-    if (remote === 'error') {
-      this.onStatus('error');
+    if (remote && 'error' in remote) {
+      this.onStatus('error', remote.error);
       return local;
     }
-    if (!remote || (local && pending() && (local.t ?? 0) > (remote.t ?? 0))) {
+    // Nothing in the cloud yet, or this device has unsent changes made after the cloud copy: send ours.
+    if (!remote || (local && pending() && (remote.stamp === this.stamp || (local.t ?? 0) > (remote.data.t ?? 0)))) {
       if (local) await this.push(local);
       else this.onStatus('synced');
       return local;
     }
-    saveLocal(remote);
-    setPending(false);
-    this.latest = remote;
+    this.accept(remote);
     this.onStatus('synced');
-    return remote;
+    return remote.data;
+  }
+
+  private accept(remote: Remote) {
+    this.latest = remote.data;
+    saveLocal(remote.data);
+    setPending(false);
+    this.setStamp(remote.stamp);
   }
 
   /** Called on every change: save locally now, upload shortly after. */
@@ -100,11 +137,11 @@ export class SyncEngine {
     saveLocal(data);
     setPending(true);
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.flush(), PUSH_DELAY);
+    this.timer = setTimeout(() => void this.flush(), PUSH_DELAY);
   }
 
-  private flush() {
-    if (this.latest && pending()) void this.push(this.latest);
+  private async flush() {
+    if (this.latest && pending()) await this.push(this.latest);
   }
 
   private async push(data: Data) {
@@ -113,37 +150,55 @@ export class SyncEngine {
       setPending(true);
       return this.onStatus('offline');
     }
-    if (this.pushing) {
+    if (this.busy) {
       clearTimeout(this.timer);
-      this.timer = setTimeout(() => this.flush(), PUSH_DELAY);
+      this.timer = setTimeout(() => void this.flush(), PUSH_DELAY);
       return;
     }
-    this.pushing = true;
+    this.busy = true;
     this.onStatus('syncing');
-    const { error } = await this.db
-      .from('budgets')
-      .upsert({ user_id: this.userId, data, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-    this.pushing = false;
-    if (error) {
-      console.error('[sync] save failed', error);
+    try {
+      const { data: row, error } = await this.db
+        .from('budgets')
+        .upsert({ user_id: this.userId, data, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+        .select('updated_at')
+        .single();
+      if (error) throw error;
+      this.setStamp(String(row.updated_at));
+      if (this.latest === data) setPending(false);
+      this.onStatus(pending() ? 'syncing' : 'synced');
+    } catch (e) {
+      console.error('[sync] save failed', e);
       setPending(true);
-      return this.onStatus(navigator.onLine ? 'error' : 'offline');
+      this.onStatus(navigator.onLine ? 'error' : 'offline', describe(e));
+    } finally {
+      this.busy = false;
     }
-    if (this.latest === data) setPending(false);
-    this.onStatus(pending() ? 'syncing' : 'synced');
   }
 
   /** Fetch changes made on another device. */
   async pull() {
-    if (this.disposed || this.pushing || pending() || !navigator.onLine) return;
-    const remote = await this.fetchRemote();
-    if (remote === 'error' || !remote) return;
-    if ((remote.t ?? 0) > (this.latest?.t ?? 0) && !pending()) {
-      this.latest = remote;
-      saveLocal(remote);
-      this.onRemote(remote);
+    if (this.disposed || this.busy || pending() || !navigator.onLine) return;
+    this.busy = true;
+    try {
+      const remote = await this.fetchRemote();
+      if (!remote) return;
+      if ('error' in remote) return this.onStatus('error', remote.error);
+      if (remote.stamp !== this.stamp && !pending()) {
+        this.accept(remote);
+        this.onRemote(remote.data);
+      }
+      this.onStatus('synced');
+    } finally {
+      this.busy = false;
     }
-    this.onStatus('synced');
+  }
+
+  /** Send anything unsent, otherwise check for changes from other devices. */
+  async syncNow() {
+    if (!navigator.onLine) return this.onStatus('offline');
+    if (pending()) await this.flush();
+    else await this.pull();
   }
 
   dispose() {
@@ -156,5 +211,6 @@ export class SyncEngine {
   static clearDevice() {
     clearLocal();
     setPending(false);
+    write(STAMP_KEY, null);
   }
 }
