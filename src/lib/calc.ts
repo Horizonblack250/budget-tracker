@@ -35,6 +35,7 @@ export type PotRow = {
 
 export type FundRow = {
   id: string;
+  kind: 'fund' | 'goal';
   name: string;
   hint?: string;
   locked: boolean;
@@ -96,16 +97,17 @@ function stepMonth(data: Data, m: string, run: Running, entries: Entry[]): Month
 
   // Funds: contribute at the start of the month, capped at the target.
   const funds = new Map<string, FundRow>();
-  for (const b of plan.buckets.filter((x) => x.kind === 'fund')) {
+  for (const b of plan.buckets.filter((x) => x.kind === 'fund' || x.kind === 'goal')) {
     if (!run.fundSeen.has(b.id)) {
       run.fundSeen.add(b.id);
       run.fundBal[b.id] = (run.fundBal[b.id] ?? 0) + (data.opening[b.id] ?? 0);
     }
     const bal = run.fundBal[b.id];
     const target = b.target ?? 0;
-    const contrib = target > 0 ? Math.max(0, Math.min(b.amount, target - bal)) : b.amount;
+    const planned = b.kind === 'goal' ? 0 : b.amount; // goals have no monthly amount
+    const contrib = target > 0 ? Math.max(0, Math.min(planned, target - bal)) : planned;
     funds.set(b.id, {
-      id: b.id, name: b.name, hint: b.hint, locked: !!b.locked, planned: b.amount, contrib, freed: b.amount - contrib,
+      id: b.id, kind: b.kind === 'goal' ? 'goal' : 'fund', name: b.name, hint: b.hint, locked: !!b.locked, planned, contrib, freed: planned - contrib,
       target, targetAck: !!b.targetAck, withdrawn: 0, movedIn: 0, movedOut: 0, balance: bal + contrib, active: true,
     });
   }
@@ -115,7 +117,7 @@ function stepMonth(data: Data, m: string, run: Running, entries: Entry[]): Month
     if (funds.has(id) || Math.round(run.fundBal[id]) === 0) continue;
     const b = names.get(id);
     funds.set(id, {
-      id, name: b?.name ?? id, locked: !!b?.locked, planned: 0, contrib: 0, freed: 0, target: 0, targetAck: false,
+      id, kind: b?.kind === 'goal' ? 'goal' : 'fund', name: b?.name ?? id, locked: !!b?.locked, planned: 0, contrib: 0, freed: 0, target: 0, targetAck: false,
       withdrawn: 0, movedIn: 0, movedOut: 0, balance: run.fundBal[id], active: false,
     });
   }
@@ -201,14 +203,14 @@ export function available(r: MonthResult, id: string): number {
   return f ? f.balance : 0;
 }
 
-export type Source = { id: string; name: string; kind: 'free' | 'allowance' | 'fund'; locked: boolean; available: number };
+export type Source = { id: string; name: string; kind: 'free' | 'allowance' | 'fund' | 'goal'; locked: boolean; available: number };
 
 /** Everything money can be spent from in that month (investments are never a source). */
 export function sources(r: MonthResult): Source[] {
   return [
     { id: FREE, name: r.free.name, kind: 'free' as const, locked: false, available: r.free.left },
     ...r.allowances.map((a) => ({ id: a.id, name: a.name, kind: 'allowance' as const, locked: a.locked, available: a.left })),
-    ...r.funds.map((f) => ({ id: f.id, name: f.name, kind: 'fund' as const, locked: f.locked, available: f.balance })),
+    ...r.funds.map((f) => ({ id: f.id, name: f.name, kind: f.kind, locked: f.locked, available: f.balance })),
   ];
 }
 
@@ -219,5 +221,16 @@ export function coverOptions(r: MonthResult, chosen: string, short: number): Sou
 
 /** Funds that are already full at the start of the month and still have a planned contribution nobody decided about. */
 export function targetPrompts(r: MonthResult): FundRow[] {
-  return r.funds.filter((f) => f.active && f.planned > 0 && f.freed === f.planned && !f.targetAck);
+  return r.funds.filter((f) => f.kind === 'fund' && f.active && f.planned > 0 && f.freed === f.planned && !f.targetAck);
+}
+
+/** Month-by-month buildup of a fund or goal: what went in, what came out, the balance after. */
+export function buildup(months: MonthResult[], id: string) {
+  const out: { month: string; added: number; taken: number; balance: number }[] = [];
+  for (const r of months) {
+    const f = r.funds.find((x) => x.id === id);
+    if (!f) continue;
+    out.push({ month: r.month, added: f.contrib + f.movedIn, taken: f.withdrawn + f.movedOut, balance: f.balance });
+  }
+  return out;
 }

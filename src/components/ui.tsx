@@ -45,6 +45,16 @@ export function TextField({ value, onValue, ...rest }: Omit<InputHTMLAttributes<
   return <input type="text" {...rest} value={value} onChange={(e) => onValue(e.target.value)} />;
 }
 
+/** Progress bar: value out of max. */
+export function Bar({ value, max, kind = 'acc' }: { value: number; max: number; kind?: 'acc' | 'over' | 'goal' }) {
+  const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : value > 0 ? 100 : 0;
+  return (
+    <span className="track" aria-hidden>
+      <span className={`fill fill-${kind}`} style={{ width: `${pct}%` }} />
+    </span>
+  );
+}
+
 export function Lock({ on }: { on: boolean }) {
   return on ? (
     <span className="lock" title="Locked: never used to cover other shortfalls" aria-label="locked">

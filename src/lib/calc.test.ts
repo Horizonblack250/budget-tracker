@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { available, computeMonth, coverOptions, targetPrompts } from './calc';
+import { available, buildup, computeMonth, computeMonths, coverOptions, targetPrompts } from './calc';
 import { defaultData } from './defaults';
 import { changePlan } from './plan';
 import { normalize } from './storage';
@@ -82,14 +82,21 @@ describe('funds and goals', () => {
     expect(oct.funds.find((f) => f.id === 'travel')!.contrib).toBe(10000);
     expect(targetPrompts(oct)).toHaveLength(0);
   });
-  it('moving free money into a new goal', () => {
+  it('goals have no monthly amount and fill only from moves', () => {
     let d = changePlan(defaultData(), '2026-12', {
-      type: 'add', bucket: { id: 'mom', kind: 'fund', name: "Mom's phone", amount: 0, target: 20000 },
+      type: 'add', bucket: { id: 'mom', kind: 'goal', name: "Mom's phone", amount: 999, target: 20000 },
     });
-    d = withEntries(d, move('2026-12-12', 3000, FREE, 'mom'));
+    expect(computeMonth(d, '2026-12').free.al).toBe(7650); // the stray amount is ignored
+    d = withEntries(d, move('2026-12-12', 3000, FREE, 'mom'), move('2027-01-03', 1000, 'misc', 'mom'));
     const r = computeMonth(d, '2026-12');
     expect(r.free.left).toBe(4650);
     expect(available(r, 'mom')).toBe(3000);
+    const months = computeMonths(d, '2027-02');
+    expect(buildup(months, 'mom').map((b) => [b.month, b.added, b.balance])).toEqual([
+      ['2026-12', 3000, 3000], ['2027-01', 1000, 4000], ['2027-02', 0, 4000],
+    ]);
+    // A goal can be spent from like a fund.
+    expect(coverOptions(computeMonth(d, '2027-02'), FREE, 4000).map((s) => s.id)).toContain('mom');
   });
 });
 

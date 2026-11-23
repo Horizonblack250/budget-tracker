@@ -2,7 +2,8 @@
 export type Kind =
   | 'fixed' // rent, bills you must pay. Can be overridden per month.
   | 'invest' // SIP and similar. Set aside and gone: never spendable, never borrowable.
-  | 'fund' // savings pots and goals. Balance grows monthly; can be withdrawn from.
+  | 'fund' // savings funds (emergency, travel). Balance grows by a fixed monthly amount; can be withdrawn from.
+  | 'goal' // something to save up for (e.g. Mom's phone). Has a target, no monthly amount: you add money when you want.
   | 'allowance'; // monthly spending budgets with carry-forward.
 
 export type Bucket = {
