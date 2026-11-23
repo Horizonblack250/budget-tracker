@@ -12,7 +12,7 @@ Each month the salary is split, in this order:
 4. **Allowances** – office lunch, phone & subscriptions, misc, medical… Unspent money carries into the same allowance next month; overspending carries as a deficit.
 5. **Free spending** – whatever is left. This is the headline.
 
-Everything is customizable: add, rename, reorder or remove any item. Plan changes apply **from the viewed month onward**, so past months keep their numbers.
+Everything is customizable: add, rename or remove any item. Plan changes apply **from the viewed month onward**, so past months keep their numbers.
 
 **Locked** funds and allowances are never offered to cover another pot's shortfall. When an expense is bigger than what its pot has left, the app asks where the rest should come from (or lets it go negative). Nothing is ever blocked.
 
