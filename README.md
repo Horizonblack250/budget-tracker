@@ -29,14 +29,19 @@ npm test         # calculation tests
 npm run build
 ```
 
-## Storage
+## Storage and sync
 
-Data is saved in the browser (localStorage) behind a small `StorageBackend` interface (`src/lib/storage.ts`), so a Supabase backend can be added without touching the UI. Use **Monthly plan → Backup** to export/import JSON. Backups from the original single-file app are converted on import.
+With Supabase configured, you sign in with email + password and your budget is stored as one row in the `budgets` table (`supabase/schema.sql`), protected by row level security. A copy is kept on the device so the app works offline; changes sync when you're back online, and changes from another device are picked up when you return to the app (newest copy wins).
+
+Setup: copy `.env.example` to `.env.local` and fill in the project URL and publishable key. Without them, the app runs local-only (browser storage).
+
+**Plan → Settings & backup** has sign out and JSON export/import. Backups from the original single-file app are converted on import.
 
 ## Code map
 
 - `src/lib/calc.ts` – all money rules (pure functions, unit-tested in `calc.test.ts`)
 - `src/lib/plan.ts` – plan changes applied from a month onward
-- `src/lib/storage.ts` – storage interface, import/export
+- `src/lib/storage.ts` – local storage, import/export
+- `src/lib/sync.ts` – Supabase sync (local copy + one row per user)
 - `src/state/store.ts` – reducer (add/delete entries, undo, overrides, plan edits)
 - `src/components/` – UI

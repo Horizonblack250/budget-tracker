@@ -4,6 +4,7 @@ import { fmt, monthLabel, todayISO } from '../lib/format';
 import { newId } from '../lib/plan';
 import { exportFile, normalize } from '../lib/storage';
 import type { Bucket, Data, Kind } from '../lib/types';
+import type { Account } from '../App';
 import { useDispatch } from '../state/store';
 import { Money, NumberField, TextField } from './ui';
 
@@ -77,7 +78,7 @@ function Row({ b, from, data }: { b: Bucket; from: string; data: Data }) {
   );
 }
 
-export function PlanTab({ data, r }: { data: Data; r: MonthResult }) {
+export function PlanTab({ data, r, account }: { data: Data; r: MonthResult; account?: Account }) {
   const dispatch = useDispatch();
   const from = r.month;
   const plan = r.plan;
@@ -132,7 +133,7 @@ export function PlanTab({ data, r }: { data: Data; r: MonthResult }) {
       </section>
 
       <ThisMonth r={r} />
-      <Settings data={data} />
+      <Settings data={data} account={account} />
     </>
   );
 }
@@ -167,14 +168,38 @@ function ThisMonth({ r }: { r: MonthResult }) {
   );
 }
 
-function Settings({ data }: { data: Data }) {
+function Settings({ data, account }: { data: Data; account?: Account }) {
   const dispatch = useDispatch();
+  const [confirmOut, setConfirmOut] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<Data | null>(null);
   const [err, setErr] = useState('');
   return (
     <section className="card">
       <h3>Settings & backup</h3>
+      {account && (
+        <div className="wrow">
+          <span>
+            Signed in
+            <span className="small mute block">{account.email} · syncs across your devices</span>
+          </span>
+          {confirmOut ? (
+            <span className="btnrow">
+              <button type="button" className="danger" onClick={() => void account.signOut()}>
+                Sign out
+              </button>
+              <button type="button" onClick={() => setConfirmOut(false)}>
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button type="button" onClick={() => (account.unsynced ? setConfirmOut(true) : void account.signOut())}>
+              Sign out
+            </button>
+          )}
+        </div>
+      )}
+      {account && confirmOut && <p className="small neg">Some changes haven’t synced yet. Signing out now removes them from this device.</p>}
       <label className="wrow">
         <span>
           Tracking starts
@@ -185,7 +210,7 @@ function Settings({ data }: { data: Data }) {
       <div className="wrow">
         <span>
           Backup
-          <span className="small mute block">your data lives in this browser — keep a copy</span>
+          <span className="small mute block">{account ? 'a copy you keep yourself, just in case' : 'your data lives in this browser — keep a copy'}</span>
         </span>
         <span className="btnrow">
           <button type="button" onClick={() => exportFile(data, todayISO())}>

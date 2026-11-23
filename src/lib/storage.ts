@@ -14,15 +14,36 @@ export interface StorageBackend {
 
 const KEY = 'budget-tracker-v2';
 
+export function loadLocal(): Data | null {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? normalize(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocal(data: Data) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(data));
+  } catch (e) {
+    console.error('[storage] could not save on this device', e);
+  }
+}
+
+export function clearLocal() {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    /* nothing to clear */
+  }
+}
+
+/** Used when Supabase isn't configured. */
 export const localBackend: StorageBackend = {
   label: 'saved on this device',
   async load() {
-    try {
-      const raw = localStorage.getItem(KEY);
-      return raw ? normalize(JSON.parse(raw)) : null;
-    } catch {
-      return null;
-    }
+    return loadLocal();
   },
   async save(data) {
     localStorage.setItem(KEY, JSON.stringify(data));

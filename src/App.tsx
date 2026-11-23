@@ -1,4 +1,6 @@
+import type { Session } from '@supabase/supabase-js';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { Login } from './components/Login';
 import { Goals } from './components/Goals';
 import { History } from './components/History';
 import { Home } from './components/Home';
@@ -8,11 +10,21 @@ import { UndoToast } from './components/ui';
 import { computeMonths } from './lib/calc';
 import { defaultData } from './lib/defaults';
 import { addMonths, monthLabel, todayISO } from './lib/format';
-import { localBackend, type StorageBackend } from './lib/storage';
+import { localBackend } from './lib/storage';
+import { supabase } from './lib/supabase';
+import { SyncEngine, type SyncStatus } from './lib/sync';
+import type { Data } from './lib/types';
 import { DispatchCtx, reducer } from './state/store';
 import { UICtx, type SheetState, type Tab } from './state/ui';
 
-const backend: StorageBackend = localBackend;
+const STATUS: Record<SyncStatus, string> = {
+  synced: 'synced ✓',
+  syncing: 'syncing…',
+  offline: 'offline · will sync later',
+  error: 'sync problem · saved on this device',
+};
+
+export type Account = { email: string; unsynced: boolean; signOut: () => Promise<void> };
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'home', label: 'Home', icon: '⌂' },
@@ -30,7 +42,23 @@ function useToday() {
   return today;
 }
 
+/** Signs you in when Supabase is set up; otherwise runs local-only. */
 export default function App() {
+  const [session, setSession] = useState<Session | null | undefined>(supabase ? undefined : null);
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (!supabase) return <Budget />;
+  if (session === undefined) return null;
+  if (!session) return <Login db={supabase} />;
+  return <Budget key={session.user.id} userId={session.user.id} email={session.user.email ?? ''} />;
+}
+
+function Budget({ userId, email }: { userId?: string; email?: string }) {
   const today = useToday();
   const [state, dispatch] = useReducer(reducer, null, () => {
     const data = defaultData();
@@ -38,29 +66,64 @@ export default function App() {
     return { data, view: now < data.start ? data.start : now, past: [], toast: null };
   });
   const [loaded, setLoaded] = useState(false);
-  const [status, setStatus] = useState(backend.label);
+  const [sync, setSync] = useState<SyncStatus | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [sheet, setSheet] = useState<SheetState>(null);
-  const firstSave = useRef(true);
+  const engine = useRef<SyncEngine | null>(null);
+  /** The data last loaded from storage: no need to save it straight back. */
+  const loadedData = useRef<Data | null>(null);
+  const viewRef = useRef(state.view);
+  viewRef.current = state.view;
 
   useEffect(() => {
-    backend.load().then((d) => {
-      if (d) dispatch({ type: 'replace', data: d, view: todayISO().slice(0, 7) });
+    const show = (d: Data | null) => {
+      if (d) {
+        loadedData.current = d;
+        dispatch({ type: 'replace', data: d, view: todayISO().slice(0, 7) });
+      } else loadedData.current = state.data;
+    };
+    if (supabase && userId) {
+      const e = new SyncEngine(supabase, userId, setSync, (d) => {
+        loadedData.current = d;
+        dispatch({ type: 'replace', data: d, view: viewRef.current });
+      });
+      engine.current = e;
+      e.init().then((d) => {
+        show(d);
+        setLoaded(true);
+      });
+      return () => e.dispose();
+    }
+    localBackend.load().then((d) => {
+      show(d);
       setLoaded(true);
     });
+    // Runs once per signed-in user (the component is keyed by user id).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!loaded) return;
-    if (firstSave.current) {
-      firstSave.current = false;
-      return;
-    }
-    backend.save(state.data).then(
-      () => setStatus(backend.label),
-      () => setStatus('couldn’t save!'),
-    );
+    if (!loaded || state.data === loadedData.current) return;
+    if (engine.current) engine.current.save(state.data);
+    else void localBackend.save(state.data);
   }, [state.data, loaded]);
+
+  const account: Account | undefined = useMemo(
+    () =>
+      supabase && email
+        ? {
+            email,
+            unsynced: sync !== 'synced',
+            signOut: async () => {
+              engine.current?.dispose();
+              SyncEngine.clearDevice();
+              await supabase!.auth.signOut();
+            },
+          }
+        : undefined,
+    [email, sync],
+  );
+  const statusText = sync ? STATUS[sync] : localBackend.label;
 
   const months = useMemo(() => computeMonths(state.data, state.view), [state.data, state.view]);
   const r = months[months.length - 1];
@@ -94,7 +157,7 @@ export default function App() {
               <span className="logo" aria-hidden>₹</span>
               <span>
                 Monthly budget
-                <span className="status">{status}</span>
+                <span className={`status ${sync === 'error' ? 'neg' : ''}`}>{statusText}</span>
               </span>
             </div>
             <button
@@ -140,7 +203,7 @@ export default function App() {
             {tab === 'home' && <Home data={state.data} r={r} today={today} />}
             {tab === 'goals' && <Goals months={months} today={today} />}
             {tab === 'history' && <History data={state.data} view={state.view} />}
-            {tab === 'plan' && <PlanTab data={state.data} r={r} />}
+            {tab === 'plan' && <PlanTab data={state.data} r={r} account={account} />}
           </main>
 
           {tab !== 'home' && (
