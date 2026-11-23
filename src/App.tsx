@@ -203,7 +203,7 @@ function Budget({ userId, email }: { userId?: string; email?: string }) {
             <div className={`card syncpanel ${sync === 'error' ? 'syncpanel-err' : ''}`} role="status">
               <p>
                 <strong>{STATUS[sync]}</strong>
-                {email && <span className="small mute block">Signed in as {email}</span>}
+                {email && <span className="small mute block">Signed in as {email} · account {userId?.slice(0, 8)}</span>}
               </p>
               {syncDetail && (
                 <p className="small">

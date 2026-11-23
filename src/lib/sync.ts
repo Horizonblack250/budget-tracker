@@ -37,6 +37,28 @@ function describe(e: unknown): string {
   return String(e);
 }
 
+const short = (id?: string | null) => (id ? id.slice(0, 8) : 'none');
+
+/** Who does this device think it is, and who does Supabase think it is? */
+async function whoAmI(db: SupabaseClient, appUser: string): Promise<string> {
+  try {
+    const { data: s } = await db.auth.getSession();
+    const token = s.session?.access_token;
+    let tokenUser = 'none';
+    let expiry = '';
+    if (token) {
+      const claims = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      tokenUser = `${short(claims.sub)} (${claims.role})`;
+      expiry = ` · login expires in ${Math.round((claims.exp * 1000 - Date.now()) / 60000)} min by this device’s clock`;
+    }
+    const { data: u, error } = await db.auth.getUser();
+    const server = error ? `error: ${error.message}` : short(u.user?.id);
+    return `app account ${short(appUser)} · login token ${tokenUser} · Supabase says ${server}${expiry}`;
+  } catch (e) {
+    return `could not check login: ${String(e)}`;
+  }
+}
+
 /**
  * Keeps a local copy (so the app opens and works offline) and mirrors every
  * change to one row in the `budgets` table.
@@ -110,7 +132,7 @@ export class SyncEngine {
     this.onStatus('syncing');
     const remote = await this.fetchRemote();
     if (remote && 'error' in remote) {
-      this.onStatus('error', remote.error);
+      this.onStatus('error', `${remote.error} — ${await whoAmI(this.db, this.userId)}`);
       return local;
     }
     // Nothing in the cloud yet, or this device has unsent changes made after the cloud copy: send ours.
@@ -170,7 +192,8 @@ export class SyncEngine {
     } catch (e) {
       console.error('[sync] save failed', e);
       setPending(true);
-      this.onStatus(navigator.onLine ? 'error' : 'offline', describe(e));
+      const who = navigator.onLine ? ` — ${await whoAmI(this.db, this.userId)}` : '';
+      this.onStatus(navigator.onLine ? 'error' : 'offline', describe(e) + who);
     } finally {
       this.busy = false;
     }
