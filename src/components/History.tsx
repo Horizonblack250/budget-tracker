@@ -54,7 +54,7 @@ export function History({ data, view }: { data: Data; view: string }) {
           </div>
         )}
       </div>
-      <p className="small mute center">To change an entry, delete it (✕) and add it again. Undo appears for 10 seconds.</p>
+      <p className="small mute center">Added something by mistake? Press ↶ Undo at the top, or delete the entry here (✕).</p>
     </section>
   );
 }

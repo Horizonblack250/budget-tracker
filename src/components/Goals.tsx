@@ -112,11 +112,15 @@ function GoalCard({ g, months, today }: { g: FundRow; months: MonthResult[]; tod
   const update = (patch: { name?: string; target?: number; locked?: boolean }) =>
     dispatch({ type: 'plan', from: r.month, op: { type: 'update', id: g.id, patch } });
   const remove = () => {
-    if (g.balance > 0) {
-      const date = monthOf(today) === r.month ? today : `${r.month}-01`;
-      dispatch({ type: 'addEntries', entries: [{ id: newEntryId(), date, amt: g.balance, from: g.id, to: FREE, note: `${g.name} closed` }], msg: `${fmt(g.balance)} back to free spending` });
-    }
-    dispatch({ type: 'plan', from: r.month, op: { type: 'remove', id: g.id } });
+    const date = monthOf(today) === r.month ? today : `${r.month}-01`;
+    dispatch({
+      type: 'batch',
+      label: `removed goal ${g.name}`,
+      actions: [
+        ...(g.balance > 0 ? [{ type: 'addEntries' as const, entries: [{ id: newEntryId(), date, amt: g.balance, from: g.id, to: FREE, note: `${g.name} closed` }] }] : []),
+        { type: 'plan' as const, from: r.month, op: { type: 'remove' as const, id: g.id } },
+      ],
+    });
   };
 
   return (

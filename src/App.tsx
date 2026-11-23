@@ -35,7 +35,7 @@ export default function App() {
   const [state, dispatch] = useReducer(reducer, null, () => {
     const data = defaultData();
     const now = todayISO().slice(0, 7);
-    return { data, view: now < data.start ? data.start : now, undo: null };
+    return { data, view: now < data.start ? data.start : now, past: [], toast: null };
   });
   const [loaded, setLoaded] = useState(false);
   const [status, setStatus] = useState(backend.label);
@@ -65,7 +65,21 @@ export default function App() {
   const months = useMemo(() => computeMonths(state.data, state.view), [state.data, state.view]);
   const r = months[months.length - 1];
   const closeSheet = useCallback(() => setSheet(null), []);
-  const dismissUndo = useCallback(() => dispatch({ type: 'dismissUndo' }), []);
+  const dismissToast = useCallback(() => dispatch({ type: 'dismissToast' }), []);
+  const lastStep = state.past[state.past.length - 1];
+
+  // Ctrl/Cmd+Z undoes the last change (but not while typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !el.closest('input, textarea, select')) {
+        e.preventDefault();
+        dispatch({ type: 'undo' });
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
   const ui = useMemo(() => ({ setTab: (t: Tab) => { setTab(t); window.scrollTo(0, 0); }, openSheet: setSheet }), []);
   const nowMonth = today.slice(0, 7);
 
@@ -74,6 +88,7 @@ export default function App() {
     <DispatchCtx.Provider value={dispatch}>
       <UICtx.Provider value={ui}>
         <div className="shell">
+          <div className="stickytop">
           <header className="topbar">
             <div className="brand">
               <span className="logo" aria-hidden>₹</span>
@@ -82,6 +97,17 @@ export default function App() {
                 <span className="status">{status}</span>
               </span>
             </div>
+            <button
+              type="button"
+              className="undobtn"
+              disabled={!lastStep}
+              onClick={() => dispatch({ type: 'undo' })}
+              title={lastStep ? `Undo: ${lastStep.label} (Ctrl/⌘+Z)` : 'Nothing to undo'}
+              aria-label={lastStep ? `Undo: ${lastStep.label}` : 'Nothing to undo'}
+            >
+              <span aria-hidden>↶</span>
+              <span className="undotext">{lastStep ? `Undo: ${lastStep.label}` : 'Undo'}</span>
+            </button>
             <div className="monthnav">
               <button type="button" className="icon" aria-label="Previous month" disabled={state.view <= state.data.start} onClick={() => dispatch({ type: 'view', month: addMonths(state.view, -1) })}>
                 ‹
@@ -108,6 +134,7 @@ export default function App() {
               </button>
             ))}
           </nav>
+          </div>
 
           <main className="content">
             {tab === 'home' && <Home data={state.data} r={r} today={today} />}
@@ -126,7 +153,7 @@ export default function App() {
         {sheet?.type === 'expense' && <ExpenseSheet data={state.data} view={state.view} today={today} initialFrom={sheet.from} onClose={closeSheet} />}
         {sheet?.type === 'addMoney' && <AddMoneySheet data={state.data} view={state.view} today={today} to={sheet.to} onClose={closeSheet} />}
         {sheet?.type === 'newGoal' && <NewGoalSheet r={r} onClose={closeSheet} />}
-        {state.undo && <UndoToast msg={state.undo.msg} stamp={state.undo.key} onUndo={() => dispatch({ type: 'undo' })} onDone={dismissUndo} />}
+        {state.toast && <UndoToast msg={state.toast.msg} stamp={state.toast.key} onUndo={state.toast.canUndo && lastStep ? () => dispatch({ type: 'undo' }) : undefined} onDone={dismissToast} />}
       </UICtx.Provider>
     </DispatchCtx.Provider>
   );

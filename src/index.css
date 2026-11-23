@@ -101,6 +101,7 @@ button.small { padding: 4px 10px; font-size: 13px; }
 
 /* ---------- layout ---------- */
 .shell { max-width: 760px; margin: 0 auto; padding: 0 16px calc(110px + env(safe-area-inset-bottom)); }
+.stickytop { position: sticky; top: 0; z-index: 25; background: var(--bg); margin: 0 -16px; padding: 0 16px; }
 .topbar {
   display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: calc(14px + env(safe-area-inset-top)) 0 10px;
@@ -109,6 +110,13 @@ button.small { padding: 4px 10px; font-size: 13px; }
 .logo { width: 34px; height: 34px; border-radius: 10px; background: var(--acc); color: var(--on-acc); display: grid; place-items: center; font-weight: 800; }
 .status { display: block; font-size: 12px; font-weight: 400; color: var(--mute); }
 .monthnav { display: flex; align-items: center; gap: 2px; }
+.undobtn {
+  display: inline-flex; align-items: center; gap: 6px; margin-left: auto; max-width: 300px;
+  border-radius: 999px; padding: 6px 14px; font-size: 14px; font-weight: 600; color: var(--acc);
+}
+.undobtn span:first-child { font-size: 17px; line-height: 1; }
+.undotext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.undobtn:disabled { color: var(--mute); }
 .monthnav .icon { font-size: 22px; padding: 4px 12px; }
 .monthlabel { min-width: 92px; text-align: center; font-weight: 700; }
 
@@ -123,14 +131,15 @@ button.small { padding: 4px 10px; font-size: 13px; }
 .tabicon { font-size: 20px; line-height: 1.1; }
 @media (min-width: 720px) {
   .tabs {
-    position: sticky; top: 0; bottom: auto; border: 1px solid var(--line); border-radius: 14px;
-    padding: 4px; margin: 4px 0 20px; box-shadow: var(--shadow);
+    position: static; border: 1px solid var(--line); border-radius: 14px;
+    padding: 4px; margin: 4px 0 12px; box-shadow: var(--shadow);
   }
   .tabs button { display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 15px; padding: 8px; }
   .tabicon { font-size: 16px; }
   .shell { padding-bottom: 60px; }
 }
 .content { padding-top: 8px; }
+@media (min-width: 720px) { .content { padding-top: 8px; } .stickytop { padding-bottom: 2px; } }
 
 .fab {
   position: fixed; right: max(16px, calc(50% - 380px + 16px)); bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 15;
@@ -299,6 +308,7 @@ button.small { padding: 4px 10px; font-size: 13px; }
 /* ---------- phones ---------- */
 @media (max-width: 560px) {
   .monthnav { width: 100%; justify-content: space-between; }
+  .undobtn { max-width: 52%; }
   .tiles { grid-template-columns: 1fr 1fr; }
   .prow, .prow-fund { grid-template-columns: 1fr 1fr; }
   .prow .pname { grid-column: 1 / -1; }

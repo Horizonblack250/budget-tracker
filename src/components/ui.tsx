@@ -63,17 +63,19 @@ export function Lock({ on }: { on: boolean }) {
   ) : null;
 }
 
-export function UndoToast({ msg, onUndo, onDone, stamp }: { msg: string; onUndo: () => void; onDone: () => void; stamp: number }) {
+export function UndoToast({ msg, onUndo, onDone, stamp }: { msg: string; onUndo?: () => void; onDone: () => void; stamp: number }) {
   useEffect(() => {
-    const t = setTimeout(onDone, 10000);
+    const t = setTimeout(onDone, onUndo ? 8000 : 3000);
     return () => clearTimeout(t);
-  }, [stamp, onDone]);
+  }, [stamp, onDone, onUndo]);
   return (
     <div className="toast" role="status">
       <span>{msg}</span>
-      <button type="button" onClick={onUndo}>
-        Undo
-      </button>
+      {onUndo && (
+        <button type="button" onClick={onUndo}>
+          Undo
+        </button>
+      )}
     </div>
   );
 }

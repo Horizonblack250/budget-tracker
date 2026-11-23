@@ -220,7 +220,7 @@ function Settings({ data }: { data: Data }) {
             This backup has {pending.entries.length} entries starting {monthLabel(pending.start)}. Replace everything in the app with it?
           </p>
           <div className="btnrow">
-            <button type="button" className="danger" onClick={() => { dispatch({ type: 'replace', data: pending, view: todayISO().slice(0, 7) }); setPending(null); }}>
+            <button type="button" className="danger" onClick={() => { dispatch({ type: 'replace', data: pending, view: todayISO().slice(0, 7), label: 'imported a backup' }); setPending(null); }}>
               Replace my data
             </button>
             <button type="button" onClick={() => setPending(null)}>
